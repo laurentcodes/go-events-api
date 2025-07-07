@@ -39,6 +39,17 @@ func InitDB() {
 	createTables() // remove this in production if unnecessary
 }
 
+// CloseDB closes the database connection
+func CloseDB() {
+	if DB != nil {
+		if err := DB.Close(); err != nil {
+			log.Printf("Error closing database connection: %v", err)
+		} else {
+			log.Println("✅ Database connection closed")
+		}
+	}
+}
+
 func createTables() {
 	createUsersTable := `
 		CREATE TABLE IF NOT EXISTS users (

@@ -13,19 +13,12 @@ type User struct {
 	Password string `binding:"required" json:"password"`
 }
 
-func (u User) Save() error {
+func (u *User) Save() error {
 	query := `
     INSERT INTO users (email, password) 
-    VALUES (?, ?)
+    VALUES ($1, $2)
+    RETURNING id
   `
-
-	stmt, err := db.DB.Prepare(query)
-
-	if err != nil {
-		return err
-	}
-
-	defer stmt.Close()
 
 	hashedPassword, err := utils.HashPassword(u.Password)
 
@@ -33,15 +26,7 @@ func (u User) Save() error {
 		return err
 	}
 
-	result, err := stmt.Exec(u.Email, hashedPassword)
-
-	if err != nil {
-		return err
-	}
-
-	userId, err := result.LastInsertId()
-
-	u.ID = userId
+	err = db.DB.QueryRow(query, u.Email, hashedPassword).Scan(&u.ID)
 
 	return err
 }
@@ -50,7 +35,7 @@ func (u *User) ValidateCredentials() error {
 	query := `
 		SELECT id, email, password 
 		FROM users 
-		WHERE email = ?
+		WHERE email = $1
 	`
 
 	row := db.DB.QueryRow(query, u.Email)
