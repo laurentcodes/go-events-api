@@ -2,6 +2,9 @@ package db
 
 import (
 	"database/sql"
+	"log"
+	"os"
+	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -11,14 +14,30 @@ var DB *sql.DB
 func InitDB() {
 	var err error
 
-	DB, err = sql.Open("sqlite3", "api.db")
+	// Create the data directory if it doesn't exist
+	dataDir := "/app/data"
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Printf("Warning: Could not create data directory: %v", err)
+	}
+
+	// Use the persistent volume path
+	dbPath := filepath.Join(dataDir, "api.db")
+
+	DB, err = sql.Open("sqlite3", dbPath)
 
 	if err != nil {
 		panic("could not connect to the database")
 	}
 
+	// Test the connection
+	if err = DB.Ping(); err != nil {
+		log.Fatal("Could not ping database:", err)
+	}
+
 	DB.SetMaxOpenConns(10)
 	DB.SetMaxIdleConns(5)
+
+	log.Printf("Database connected successfully at %s", dbPath)
 
 	createTables()
 }
@@ -71,4 +90,6 @@ func createTables() {
 	if err != nil {
 		panic("could not create registrations table")
 	}
+
+	log.Println("All tables created successfully")
 }
