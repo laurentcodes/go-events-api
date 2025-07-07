@@ -14,13 +14,16 @@ var DB *sql.DB
 func InitDB() {
 	var err error
 
-	// Create the data directory if it doesn't exist
-	dataDir := "/app/data"
+	// Default to local, override with env var for production
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./data" // Local development default
+	}
+
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		log.Printf("Warning: Could not create data directory: %v", err)
 	}
 
-	// Use the persistent volume path
 	dbPath := filepath.Join(dataDir, "api.db")
 
 	DB, err = sql.Open("sqlite3", dbPath)
