@@ -4,95 +4,79 @@ import (
 	"database/sql"
 	"log"
 	"os"
-	"path/filepath"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 var DB *sql.DB
 
 func InitDB() {
+	// Load .env in development (optional)
+	_ = godotenv.Load()
+
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL is not set")
+	}
+
 	var err error
-
-	// Default to local, override with env var for production
-	dataDir := os.Getenv("DATA_DIR")
-	if dataDir == "" {
-		dataDir = "./data" // Local development default
-	}
-
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		log.Printf("Warning: Could not create data directory: %v", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "api.db")
-
-	DB, err = sql.Open("sqlite3", dbPath)
-
+	DB, err = sql.Open("postgres", dsn)
 	if err != nil {
-		panic("could not connect to the database")
+		log.Fatalf("Failed to open database connection: %v", err)
 	}
 
-	// Test the connection
 	if err = DB.Ping(); err != nil {
-		log.Fatal("Could not ping database:", err)
+		log.Fatalf("Could not ping database: %v", err)
 	}
 
-	DB.SetMaxOpenConns(10)
-	DB.SetMaxIdleConns(5)
+	// Optional: configure connection pool
+	DB.SetMaxOpenConns(25)
+	DB.SetMaxIdleConns(10)
 
-	log.Printf("Database connected successfully at %s", dbPath)
+	log.Println("✅ Connected to the database")
 
-	createTables()
+	createTables() // remove this in production if unnecessary
 }
 
 func createTables() {
 	createUsersTable := `
 		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			email TEXT NOT NULL UNIQUE,
-			password TEXT NOT NULL
-		)
+			id SERIAL PRIMARY KEY,
+			email VARCHAR(255) NOT NULL UNIQUE,
+			password TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
 	`
 
-	_, err := DB.Exec(createUsersTable)
-
-	if err != nil {
-		panic("could not create users table")
-	}
-
 	createEventsTable := `
-    CREATE TABLE IF NOT EXISTS events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL,
-      location TEXT NOT NULL,
-      date_time DATETIME NOT NULL,
-      user_id INTEGER,
-			FOREIGN KEY(user_id) REFERENCES users(id)
-    )
-  `
-
-	_, err = DB.Exec(createEventsTable)
-
-	if err != nil {
-		panic("could not create events table")
-	}
+		CREATE TABLE IF NOT EXISTS events (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			description TEXT NOT NULL,
+			location VARCHAR(255) NOT NULL,
+			date_time TIMESTAMP NOT NULL,
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+	`
 
 	createRegistrationsTable := `
 		CREATE TABLE IF NOT EXISTS registrations (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			event_id INTEGER,
-			user_id INTEGER,
-			FOREIGN KEY(event_id) REFERENCES events(id),
-			FOREIGN KEY(user_id) REFERENCES users(id)
-		)
+			id SERIAL PRIMARY KEY,
+			event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(event_id, user_id)
+		);
 	`
 
-	_, err = DB.Exec(createRegistrationsTable)
-
-	if err != nil {
-		panic("could not create registrations table")
+	statements := []string{createUsersTable, createEventsTable, createRegistrationsTable}
+	for _, stmt := range statements {
+		if _, err := DB.Exec(stmt); err != nil {
+			log.Fatalf("❌ Could not execute statement: %v", err)
+		}
 	}
 
-	log.Println("All tables created successfully")
+	log.Println("✅ Tables created or verified successfully")
 }
